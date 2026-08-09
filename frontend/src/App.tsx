@@ -32,6 +32,7 @@ type AnalysisResult = {
   risk_level: 'low' | 'medium' | 'high'
   risk_label: string
   detected_actions: string[]
+  safe_actions: string[]
   feedback: string
   recommended_actions: string[]
 }
@@ -709,24 +710,42 @@ function ResultPage({
         <section className="result-grid">
           <article className="result-card">
             <div className="result-card-title">
-              <h2>발견된 행동</h2>
-              <span>{result.detected_actions.length}</span>
+              <h2>행동 분석</h2>
             </div>
 
-            {result.detected_actions.length > 0 ? (
-              <ul className="action-list">
-                {result.detected_actions.map((action) => (
-                  <li key={action}>
-                    <span>✓</span>
-                    {action}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="empty-message">
-                명확한 행동이 충분히 확인되지 않았습니다.
-              </p>
-            )}
+            <div className="action-section danger-action-section">
+              <h3>위험 행동</h3>
+
+              {result.detected_actions.length > 0 ? (
+                <ul className="action-list">
+                  {result.detected_actions.map((action) => (
+                    <li key={action}>
+                      <span>!</span>
+                      {action}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="empty-action">확인된 위험 행동이 없습니다.</p>
+              )}
+            </div>
+  
+            <div className="action-section safe-action-section">
+              <h3>안전 행동</h3>
+
+              {result.safe_actions.length > 0 ? (
+                <ul className="action-list">
+                  {result.safe_actions.map((action) => (
+                    <li key={action}>
+                      <span>✓</span>
+                      {action}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="empty-action">확인된 안전 행동이 없습니다.</p>
+              )}
+            </div>
           </article>
 
           <article className="result-card">

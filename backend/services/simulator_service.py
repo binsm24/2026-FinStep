@@ -162,6 +162,7 @@ def analyze_answer(scenario_id: str, answer: str) -> dict[str, Any]:
 
     score = 0
     detected_actions: list[str] = []
+    safe_actions: list[str] = []
     feedbacks: list[str] = []
 
     for rule in rules:
@@ -177,12 +178,16 @@ def analyze_answer(scenario_id: str, answer: str) -> dict[str, Any]:
         if matched_keyword is None:
             continue
 
-        #위험 행동 키워드가 부정된 경우에는 감점X 
         if rule["score"] < 0 and is_negated(answer, matched_keyword):
             continue
 
         score += rule["score"]
-        detected_actions.append(rule["action"])
+
+        if rule["score"] < 0:
+            detected_actions.append(rule["action"])
+        else:
+            safe_actions.append(rule["action"])
+
         feedbacks.append(rule["feedback"])
 
     risk_level, risk_label = get_risk_level(score)
@@ -213,5 +218,6 @@ def analyze_answer(scenario_id: str, answer: str) -> dict[str, Any]:
         "risk_level": risk_level,
         "risk_label": risk_label,
         "detected_actions": detected_actions,
+        "safe_actions": safe_actions,
         "feedback": feedback,
     }

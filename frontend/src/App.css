@@ -1300,3 +1300,42 @@ button {
     font-size: 10px;
   }
 }
+
+.action-section {
+  margin-top: 22px;
+}
+
+.action-section h3 {
+  margin: 0 0 11px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.danger-action-section h3 {
+  color: #d34a4a;
+}
+
+.safe-action-section h3 {
+  color: #25876d;
+}
+
+.danger-action-section .action-list li span {
+  color: #d34a4a;
+  background: #fff0f0;
+}
+
+.safe-action-section .action-list li span {
+  color: #25876d;
+  background: #e5f8f1;
+}
+
+.empty-action {
+  margin: 0;
+  color: #a0a9b8;
+  font-size: 12px;
+}
+
+.action-section + .action-section {
+  padding-top: 18px;
+  border-top: 1px solid #eef1f6;
+}
