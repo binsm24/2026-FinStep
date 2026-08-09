@@ -417,6 +417,55 @@ function SimulatorPage({
   )
 }
 
+function StepProgress({ currentStep }: { currentStep: 1 | 2 | 3 }) {
+  const steps = [
+    {
+      number: 1,
+      label: '상황 확인',
+    },
+    {
+      number: 2,
+      label: '나의 대응 작성',
+    },
+    {
+      number: 3,
+      label: '분석 결과',
+    },
+  ]
+
+  return (
+    <div className="step-progress">
+      {steps.map((step, index) => (
+        <div className="step-progress-item" key={step.number}>
+          <div
+            className={`step-circle ${
+              step.number <= currentStep ? 'step-active' : ''
+            }`}
+          >
+            {step.number < currentStep ? '✓' : step.number}
+          </div>
+
+          <span
+            className={
+              step.number <= currentStep ? 'step-label-active' : ''
+            }
+          >
+            {step.label}
+          </span>
+
+          {index < steps.length - 1 && (
+            <div
+              className={`step-line ${
+                step.number < currentStep ? 'step-line-active' : ''
+              }`}
+            />
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function ScenarioPage({
   scenario,
   onBack,
@@ -481,6 +530,8 @@ function ScenarioPage({
           <ChevronLeft size={18} />
           시나리오 선택으로 돌아가기
         </button>
+
+        <StepProgress currentStep={2} />
 
         <div
           className="scenario-detail-icon"
@@ -612,6 +663,8 @@ function ResultPage({
           <ChevronLeft size={18} />
           답변 화면으로 돌아가기
         </button>
+    
+        <StepProgress currentStep={3} />
 
         <section className="result-heading">
           <div
