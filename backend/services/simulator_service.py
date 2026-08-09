@@ -1,5 +1,39 @@
 from typing import Any
+import re
 
+NEGATION_PATTERNS = [
+    r"하지\s*않",
+    r"안\s+(?:보내|송금|입금|이체|계약|투자|제공)",
+    r"않고",
+    r"않겠습니다",
+    r"않는다",
+    r"말아야",
+    r"못\s+(?:보내|송금|입금|이체)",
+]
+
+
+def is_negated(answer: str, keyword: str) -> bool:
+    """
+    키워드가 부정 표현의 대상인지 확인합니다.
+
+    예:
+    - 송금하지 않는다 → True
+    - 송금하고 확인한다 → False
+    """
+    keyword_index = answer.find(keyword)
+
+    if keyword_index == -1:
+        return False
+
+    # 키워드 앞뒤 12글자 정도만 확인해 부정 표현을 판단합니다.
+    start = max(0, keyword_index - 12)
+    end = min(len(answer), keyword_index + len(keyword) + 12)
+    context = answer[start:end]
+
+    return any(
+        re.search(pattern, context)
+        for pattern in NEGATION_PATTERNS
+    )
 
 SCENARIO_RULES: dict[str, list[dict[str, Any]]] = {
     "jeonse-fraud": [
@@ -112,7 +146,6 @@ SCENARIO_RULES: dict[str, list[dict[str, Any]]] = {
     ],
 }
 
-
 def get_risk_level(score: int) -> tuple[str, str]:
     if score >= 31:
         return "low", "안전한 대응"
@@ -132,10 +165,25 @@ def analyze_answer(scenario_id: str, answer: str) -> dict[str, Any]:
     feedbacks: list[str] = []
 
     for rule in rules:
-        if any(keyword in answer for keyword in rule["keywords"]):
-            score += rule["score"]
-            detected_actions.append(rule["action"])
-            feedbacks.append(rule["feedback"])
+        matched_keyword = next(
+            (
+                keyword
+                for keyword in rule["keywords"]
+                if keyword in answer
+            ),
+            None,
+        )
+
+        if matched_keyword is None:
+            continue
+
+        #위험 행동 키워드가 부정된 경우에는 감점X 
+        if rule["score"] < 0 and is_negated(answer, matched_keyword):
+            continue
+
+        score += rule["score"]
+        detected_actions.append(rule["action"])
+        feedbacks.append(rule["feedback"])
 
     risk_level, risk_label = get_risk_level(score)
 
