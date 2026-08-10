@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, HTTPException
+from services.llm_service import analyze_answer_with_llm
 
 from services.multi_stage_service import (
     create_session,
@@ -13,6 +14,11 @@ router = APIRouter(
     tags=["multi-stage-simulators"],
 )
 
+class LLMAnalysisRequest(BaseModel):
+    scenario_title: str = Field(..., min_length=1)
+    stage_title: str = Field(..., min_length=1)
+    situation: str = Field(..., min_length=1)
+    answer: str = Field(..., min_length=2)
 
 class StageAnswerRequest(BaseModel):
     session_id: str = Field(..., min_length=1)
@@ -53,3 +59,13 @@ def get_simulation_result(session_id: str):
             status_code=404,
             detail=str(error),
         ) from error
+
+# test 용 API
+@router.post("/llm-test")
+def test_llm_analysis(request: LLMAnalysisRequest):
+    return analyze_answer_with_llm(
+        scenario_title=request.scenario_title,
+        stage_title=request.stage_title,
+        situation=request.situation,
+        answer=request.answer,
+    )
