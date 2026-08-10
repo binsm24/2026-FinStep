@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from routers.simulator import router as simulator_router
-
+from routers.multi_stage import router as multi_stage_router
 
 app = FastAPI(
     title="FinStep API",
@@ -19,7 +19,7 @@ app.add_middleware(
 )
 
 app.include_router(simulator_router)
-
+app.include_router(multi_stage_router)
 
 @app.get("/")
 def read_root():
