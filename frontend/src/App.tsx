@@ -907,6 +907,14 @@ function ResultPage({
   )
 }
 
+type ConversationEntry = {
+  stage: number
+  stageTitle: string
+  speaker: string
+  message: string
+  isUser?: boolean
+}
+
 function MultiStagePage({
   scenario,
   initialData,
@@ -923,6 +931,17 @@ function MultiStagePage({
   const [isLoading, setIsLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
 
+  const [conversationHistory, setConversationHistory] = useState<
+    ConversationEntry[]
+  >(
+    initialData.messages.map((item) => ({
+      stage: initialData.stage,
+      stageTitle: initialData.stage_title,
+      speaker: item.speaker,
+      message: item.message,
+    })),
+  )
+
   const handleSubmit = async () => {
     if (!answer.trim()) {
       setErrorMessage('현재 상황에 대한 대응을 작성해주세요.')
@@ -931,6 +950,22 @@ function MultiStagePage({
 
     setIsLoading(true)
     setErrorMessage('')
+
+    const currentStage = stageData.stage
+    const currentStageTitle = stageData.stage_title
+    const submittedAnswer = answer.trim()
+
+    setConversationHistory((previous) => [
+      ...previous,
+      {
+        stage: currentStage,
+        stageTitle: currentStageTitle,
+        speaker: '나',
+        message: submittedAnswer,
+        isUser: true,
+      },
+    ])
+
 
     try {
       const response = await fetch(
@@ -942,7 +977,7 @@ function MultiStagePage({
           },
           body: JSON.stringify({
             session_id: stageData.session_id,
-            answer: answer.trim(),
+            answer: submittedAnswer,
           }),
         },
       )
@@ -968,6 +1003,20 @@ function MultiStagePage({
         onComplete(result)
         return
       }
+
+      const nextStage = data.stage
+      const nextStageTitle = data.stage_title
+      const nextMessages = data.messages ?? []
+
+      setConversationHistory((previous) => [
+        ...previous,
+        ...nextMessages.map((item) => ({
+          stage: nextStage,
+          stageTitle: nextStageTitle,
+          speaker: item.speaker,
+          message: item.message,
+        })),
+      ])
 
       setStageData({
         ...stageData,
@@ -1023,15 +1072,46 @@ function MultiStagePage({
             </span>
           </div>
 
-          <div className="message-list">
-            {stageData.messages.map((item, index) => (
-              <div className="message-row" key={`${item.speaker}-${index}`}>
-                <span className="speaker-label">{item.speaker}</span>
-                <div className="message-bubble">
-                  {item.message}
+          <div className="conversation-history">
+            {conversationHistory.map((entry, index) => {
+              const showStageDivider =
+                index === 0 ||
+                conversationHistory[index - 1].stage !== entry.stage
+
+              return (
+                <div key={`${entry.stage}-${entry.speaker}-${index}`}>
+                  {showStageDivider && (
+                    <div className="conversation-stage-divider">
+                      <span>
+                        {entry.stage}단계 · {entry.stageTitle}
+                      </span>
+                    </div>
+                  )}
+
+                  <div
+                    className={`message-row ${
+                      entry.isUser ? 'user-message-row' : ''
+                    }`}
+                  >
+                    <span
+                      className={`speaker-label ${
+                        entry.isUser ? 'user-speaker-label' : ''
+                      }`}
+                    >
+                      {entry.speaker}
+                    </span>
+
+                    <div
+                      className={`message-bubble ${
+                        entry.isUser ? 'user-message-bubble' : ''
+                      }`}
+                    >
+                      {entry.message}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </section>
 

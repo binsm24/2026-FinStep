@@ -1550,3 +1550,64 @@ button {
     margin: 0 6px;
   }
 }
+
+.conversation-history {
+  max-height: 620px;
+  margin-top: 25px;
+  padding-right: 5px;
+  overflow-y: auto;
+  display: grid;
+  gap: 16px;
+}
+
+.conversation-stage-divider {
+  margin: 13px 0 2px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #9aa4b7;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 1px;
+}
+
+.conversation-stage-divider::before,
+.conversation-stage-divider::after {
+  content: '';
+  height: 1px;
+  flex: 1;
+  background: #edf0f6;
+}
+
+.conversation-stage-divider span {
+  padding: 0 5px;
+  white-space: nowrap;
+}
+
+.user-message-row {
+  justify-content: flex-end;
+}
+
+.user-speaker-label {
+  order: 2;
+  color: #315bea;
+  text-align: right;
+}
+
+.user-message-bubble {
+  order: 1;
+  border-radius: 16px 5px 16px 16px;
+  color: white;
+  background: #315bea;
+}
+
+@media (max-width: 520px) {
+  .conversation-history {
+    max-height: 580px;
+    gap: 13px;
+  }
+
+  .conversation-stage-divider {
+    font-size: 9px;
+  }
+}
