@@ -2,7 +2,7 @@ from typing import Any
 from uuid import uuid4
 
 from data.scenarios import MULTI_STAGE_SCENARIOS
-
+from services.llm_service import analyze_answer_with_llm
 
 simulation_sessions: dict[str, dict[str, Any]] = {}
 
@@ -75,6 +75,29 @@ def is_negated(answer: str, keyword: str) -> bool:
 
     return any(negation in context for negation in negations)
 
+LLM_ACTION_SCORES = {
+    "transfer_money": -50,
+    "provide_personal_info": -40,
+    "continue_communication": -15,
+    "official_verification": 35,
+    "consult_others": 25,
+    "stop_or_delay": 30,
+    "check_documents": 30,
+    "invest_money": -45,
+    "question_pressure": 25,
+}
+
+LLM_ACTION_LABELS = {
+    "transfer_money": "송금·입금·이체 의도",
+    "provide_personal_info": "개인정보 제공 의도",
+    "continue_communication": "대화 또는 통화 지속",
+    "official_verification": "공식 기관 확인",
+    "consult_others": "가족·지인·전문가 상담",
+    "stop_or_delay": "중단·거절·보류",
+    "check_documents": "관련 문서·정보 확인",
+    "invest_money": "투자 의사",
+    "question_pressure": "압박 또는 비정상 조건 의심",
+}
 
 def analyze_stage_answer(
     answer: str,
@@ -137,7 +160,25 @@ def submit_stage_answer(
     current_stage_number = session["current_stage"]
     current_stage = scenario["stages"][current_stage_number - 1]
 
-    analysis = analyze_stage_answer(answer, current_stage)
+    # 1. 기존 규칙 기반 분석
+    rule_analysis = analyze_stage_answer(
+        answer=answer,
+        stage=current_stage,
+    )
+
+    # 2. Gemini 기반 행동 의도 분석
+    llm_analysis = analyze_with_llm(
+        scenario_title=scenario["title"],
+        stage_title=current_stage["title"],
+        situation=current_stage["description"],
+        answer=answer,
+    )
+
+    # 3. 두 분석 결과 병합
+    analysis = merge_stage_analysis(
+        rule_analysis=rule_analysis,
+        llm_analysis=llm_analysis,
+    )
 
     session["total_score"] += analysis["score"]
     session["stage_results"].append(
@@ -233,4 +274,78 @@ def get_session_result(session_id: str) -> dict[str, Any]:
             "recommended_actions"
         ],
         "is_finished": session["is_finished"],
+    }
+
+def analyze_with_llm(
+    scenario_title: str,
+    stage_title: str,
+    situation: str,
+    answer: str,
+) -> dict[str, Any]:
+    llm_result = analyze_answer_with_llm(
+        scenario_title=scenario_title,
+        stage_title=stage_title,
+        situation=situation,
+        answer=answer,
+    )
+
+    score = 0
+    safe_actions: list[str] = []
+    risky_actions: list[str] = []
+
+    seen_types: set[str] = set()
+
+    for action in llm_result.get("actions", []):
+        action_type = action.get("type")
+
+        if action_type in seen_types:
+            continue
+
+        if action_type not in LLM_ACTION_SCORES:
+            continue
+
+        seen_types.add(action_type)
+        score += LLM_ACTION_SCORES[action_type]
+
+        label = LLM_ACTION_LABELS[action_type]
+
+        if LLM_ACTION_SCORES[action_type] >= 0:
+            safe_actions.append(label)
+        else:
+            risky_actions.append(label)
+
+    return {
+        "score": score,
+        "safe_actions": safe_actions,
+        "risky_actions": risky_actions,
+        "risk_signals": llm_result.get("risk_signals", []),
+        "llm_available": llm_result.get("llm_available", False),
+    }
+
+def merge_stage_analysis(
+    rule_analysis: dict[str, Any],
+    llm_analysis: dict[str, Any],
+) -> dict[str, Any]:
+    safe_actions = list(
+        dict.fromkeys(
+            rule_analysis["safe_actions"]
+            + llm_analysis["safe_actions"]
+        )
+    )
+
+    risky_actions = list(
+        dict.fromkeys(
+            rule_analysis["risky_actions"]
+            + llm_analysis["risky_actions"]
+        )
+    )
+
+    # 동일한 행동이 여러 분석 결과에 포함되더라도
+    # 점수는 규칙 기반 점수만 사용해 중복 가산을 방지합니다.
+    return {
+        "score": rule_analysis["score"],
+        "safe_actions": safe_actions,
+        "risky_actions": risky_actions,
+        "risk_signals": llm_analysis.get("risk_signals", []),
+        "llm_score": llm_analysis.get("score", 0),
     }
