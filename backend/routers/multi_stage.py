@@ -1,6 +1,9 @@
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, HTTPException
-from services.llm_service import analyze_answer_with_llm
+from services.llm_service import (
+    analyze_answer_with_llm,
+    generate_next_response,
+)
 
 from services.multi_stage_service import (
     create_session,
@@ -13,6 +16,15 @@ router = APIRouter(
     prefix="/api/multi-stage",
     tags=["multi-stage-simulators"],
 )
+
+class NextResponseRequest(BaseModel):
+    scenario_title: str = Field(..., min_length=1)
+    current_stage_title: str = Field(..., min_length=1)
+    current_message: str = Field(..., min_length=1)
+    user_answer: str = Field(..., min_length=2)
+    next_stage_title: str = Field(..., min_length=1)
+    next_stage_description: str = Field(..., min_length=1)
+    next_stage_message: str = Field(..., min_length=1)
 
 class LLMAnalysisRequest(BaseModel):
     scenario_title: str = Field(..., min_length=1)
@@ -68,4 +80,16 @@ def test_llm_analysis(request: LLMAnalysisRequest):
         stage_title=request.stage_title,
         situation=request.situation,
         answer=request.answer,
+    )
+
+@router.post("/next-response-test")
+def test_next_response(request: NextResponseRequest):
+    return generate_next_response(
+        scenario_title=request.scenario_title,
+        current_stage_title=request.current_stage_title,
+        current_message=request.current_message,
+        user_answer=request.user_answer,
+        next_stage_title=request.next_stage_title,
+        next_stage_description=request.next_stage_description,
+        next_stage_message=request.next_stage_message,
     )

@@ -2,7 +2,10 @@ from typing import Any
 from uuid import uuid4
 
 from data.scenarios import MULTI_STAGE_SCENARIOS
-from services.llm_service import analyze_answer_with_llm
+from services.llm_service import (
+    analyze_answer_with_llm,
+    generate_next_response,
+)
 
 simulation_sessions: dict[str, dict[str, Any]] = {}
 
@@ -210,12 +213,32 @@ def submit_stage_answer(
     next_stage = scenario["stages"][next_stage_number - 1]
     session["current_stage"] = next_stage_number
 
+    default_next_message = next_stage["messages"][0]["message"]
+    current_message = current_stage["messages"][0]["message"]
+
+    generated_response = generate_next_response(
+        scenario_title=scenario["title"],
+        current_stage_title=current_stage["title"],
+        current_message=current_message,
+        user_answer=answer,
+        next_stage_title=next_stage["title"],
+        next_stage_description=next_stage["description"],
+        next_stage_message=default_next_message,
+    )
+
+    next_messages = [
+        {
+            "speaker": "상대방",
+            "message": generated_response["message"],
+        }
+    ]
+
     return {
         "session_id": session_id,
         "stage": next_stage["stage"],
         "stage_title": next_stage["title"],
         "description": next_stage["description"],
-        "messages": next_stage["messages"],
+        "messages": next_messages,
         "stage_score": analysis["score"],
         "total_score": session["total_score"],
         "safe_actions": analysis["safe_actions"],
