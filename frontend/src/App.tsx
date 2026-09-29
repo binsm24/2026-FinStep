@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   ArrowRight,
   BadgeAlert,
+  BookOpen,
   Building2,
   ChevronLeft,
   CircleDollarSign,
@@ -11,6 +12,15 @@ import {
   WalletCards,
 } from 'lucide-react'
 import './App.css'
+import { apiFetch } from './api'
+import { useAuth } from './auth-context'
+import { ArchiveNavigation } from './navigation-context'
+import AccountControls from './AccountControls'
+import ArchivePage from './ArchivePage'
+import SaveResultButton from './SaveResultButton'
+import QuizCard from './QuizCard'
+import ConversationHistory, { type ConversationEntry } from './ConversationHistory'
+import type { Quiz } from './quiz'
 
 type Scenario = {
   id: string
@@ -23,6 +33,7 @@ type Scenario = {
   warningSignals: string[]
   placeholder: string
   recommendedActions: string[]
+  relatedLearningIds: string[]
 }
 
 type AnalysisResult = {
@@ -42,6 +53,7 @@ type SimulationMessage = {
 }
 
 type MultiStageStartResponse = {
+  question: string
   session_id: string
   scenario_id: string
   scenario_title: string
@@ -54,12 +66,13 @@ type MultiStageStartResponse = {
 }
 
 type MultiStageResponse = {
+  question: string
+  status: 'advanced' | 'clarification' | 'analysis_unavailable' | 'finished'
   session_id: string
   stage: number
   stage_title: string
   description?: string
   messages?: SimulationMessage[]
-  stage_score: number
   total_score: number
   safe_actions: string[]
   risky_actions: string[]
@@ -72,8 +85,11 @@ type MultiStageResult = {
   session_id: string
   scenario_id: string
   scenario_title: string
-  score: number
-  risk_level: 'low' | 'medium' | 'high'
+  score: number | null
+  risk_level: 'low' | 'medium' | 'high' | 'unknown'
+  summary: string
+  completed_stage_count: number
+  total_stages: number
   risk_label: string
   stage_results: {
     stage: number
@@ -86,6 +102,17 @@ type MultiStageResult = {
   risky_actions: string[]
   recommended_actions: string[]
   is_finished: boolean
+}
+
+type LearningContent = {
+  id: string
+  category: string
+  title: string
+  summary: string
+  easy_explanation: string
+  impact_for_students: string[]
+  key_points: string[]
+  quizzes: Quiz[]
 }
 
 const scenarios: Scenario[] = [
@@ -111,6 +138,7 @@ const scenarios: Scenario[] = [
       '주변 전세 시세 확인하기',
       '확인이 끝날 때까지 계약과 송금을 보류하기',
     ],
+    relatedLearningIds: ['registry-document'],
   },
   {
     id: 'voice-phishing',
@@ -135,6 +163,7 @@ const scenarios: Scenario[] = [
       '송금하거나 인증번호를 알려주지 않기',
       '가족이나 지인에게 상황 알리기',
     ],
+    relatedLearningIds: ['safe-account'],
   },
   {
     id: 'investment-fraud',
@@ -159,13 +188,17 @@ const scenarios: Scenario[] = [
       '확인되지 않은 계좌로 송금하지 않기',
       '충분히 확인할 때까지 투자 보류하기',
     ],
+    relatedLearningIds: ['guaranteed-return'],
   },
 ]
 
-function App() {
+function AppContent() {
   const [page, setPage] = useState<
-    'home' | 'simulator' | 'scenario' | 'result' | 'multi-stage' | 'multi-result'
+    'home' | 'simulator' | 'scenario' | 'result' | 'multi-stage' | 'multi-result' | 'learning' | 'archive'
   >('home')
+
+  const [learningContentId, setLearningContentId] =
+  useState<string | undefined>(undefined)
 
   const [selectedScenario, setSelectedScenario] =
     useState<Scenario | null>(null)
@@ -181,8 +214,8 @@ function App() {
 
   const handleScenarioSelect = async (scenario: Scenario) => {
     try {
-      const response = await fetch(
-        `http://localhost:8000/api/multi-stage/${scenario.id}/start`,
+      const response = await apiFetch(
+        `/api/multi-stage/${scenario.id}/start`,
         {
         method: 'POST',
         },
@@ -222,6 +255,10 @@ function App() {
     setPage('multi-result')
   }
 
+  function renderPage() {
+    if (page === 'archive') {
+      return <div className="app-shell"><Header onLogoClick={() => setPage('home')} /><ArchivePage /></div>
+    }
   if (
     page === 'multi-result' &&
     multiStageResult &&
@@ -236,6 +273,10 @@ function App() {
           setMultiStageData(null)
           setMultiStageResult(null)
           setPage('home')
+        }}
+        onLearn={(contentId) => {
+          setLearningContentId(contentId)
+          setPage('learning')
         }}
       />
     )
@@ -252,6 +293,7 @@ function App() {
         initialData={multiStageData}
         onComplete={handleMultiStageComplete}
         onBack={() => setPage('simulator')}
+        onHome={() => setPage('home')}
       />
     )
   }
@@ -276,6 +318,7 @@ function App() {
       <ScenarioPage
         scenario={selectedScenario}
         onBack={() => setPage('simulator')}
+        onHome={() => setPage('home')}
         onAnalysisComplete={handleAnalysisComplete}
       />
     )
@@ -290,7 +333,26 @@ function App() {
     )
   }
 
-  return <HomePage onStart={() => setPage('simulator')} />
+  if (page === 'learning') {
+    return (
+      <LearningPage
+        onBack={() => {
+          setLearningContentId(undefined)
+          setPage('home')
+        }}
+        initialContentId={learningContentId}
+      />
+    )
+  }
+
+  return (
+    <HomePage
+      onStart={() => setPage('simulator')}
+      onLearning={() => setPage('learning')}
+    />
+  )
+  }
+  return <ArchiveNavigation.Provider value={() => setPage('archive')}>{renderPage()}</ArchiveNavigation.Provider>
 }
 
 function Header({ onLogoClick }: { onLogoClick: () => void }) {
@@ -303,14 +365,20 @@ function Header({ onLogoClick }: { onLogoClick: () => void }) {
         <span className="logo-text">FinStep</span>
       </button>
 
-      <div className="header-caption">금융을 이해하는 첫걸음</div>
+      <AccountControls />
     </header>
   )
 }
 
-function HomePage({ onStart }: { onStart: () => void }) {
+function HomePage({
+  onStart,
+  onLearning,
+}: {
+  onStart: () => void
+  onLearning: () => void
+}) {
   return (
-    <div className="app-shell">
+    <div className="app-shell home-shell">
       <Header onLogoClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} />
 
       <main>
@@ -332,10 +400,20 @@ function HomePage({ onStart }: { onStart: () => void }) {
               직접 체험하고, 더 안전한 선택을 연습할 수 있도록 돕습니다.
             </p>
 
-            <button className="primary-button" onClick={onStart}>
-              금융 위험 시뮬레이터 시작
-              <ArrowRight size={19} />
-            </button>
+            <div className="hero-actions">
+              <button className="primary-button" onClick={onStart}>
+                금융 위험 시뮬레이터 시작
+                <ArrowRight size={19} />
+              </button>
+
+              <button
+                className="learning-home-button"
+                onClick={onLearning}
+              >
+                경제 한 걸음 학습하기
+                <BookOpen size={18} />
+              </button>
+            </div>
 
             <div className="hero-note">
               <BadgeAlert size={16} />
@@ -391,83 +469,12 @@ function HomePage({ onStart }: { onStart: () => void }) {
           </div>
         </section>
 
-        <section className="feature-section">
-          <div className="section-heading">
-            <div>
-              <span className="section-label">WHY FINSTEP</span>
-              <h2>알고, 판단하고, 대비하는 금융 습관</h2>
-            </div>
-            <p>
-              어려운 금융 지식을 외우는 대신,
-              실제 상황 속에서 올바른 대응을 연습해보세요.
-            </p>
-          </div>
-
-          <div className="feature-grid">
-            <FeatureCard
-              icon={<Siren size={23} />}
-              number="01"
-              title="상황을 직접 체험해요"
-              description="실제 생활에서 일어날 수 있는 금융 위험 상황을 시뮬레이션합니다."
-            />
-            <FeatureCard
-              icon={<BadgeAlert size={23} />}
-              number="02"
-              title="나의 대응을 확인해요"
-              description="서술형 답변을 바탕으로 위험 행동과 예방 행동을 분석합니다."
-            />
-            <FeatureCard
-              icon={<ShieldCheck size={23} />}
-              number="03"
-              title="더 나은 선택을 배워요"
-              description="상황별 판단 근거와 안전한 대응 방법을 쉽게 확인합니다."
-            />
-          </div>
-        </section>
-
-        <section className="cta-section">
-          <div>
-            <span className="section-label light-label">START YOUR FINANCIAL STEP</span>
-            <h2>첫 번째 금융 위험 상황을<br />확인해볼까요?</h2>
-          </div>
-          <button className="light-button" onClick={onStart}>
-            시뮬레이터 시작하기
-            <ArrowRight size={18} />
-          </button>
-        </section>
       </main>
 
-      <footer className="footer">
-        <span className="footer-logo">FinStep</span>
-        <span>금융을 이해하는 첫걸음</span>
-      </footer>
     </div>
   )
 }
 
-
-function FeatureCard({
-  icon,
-  number,
-  title,
-  description,
-}: {
-  icon: React.ReactNode
-  number: string
-  title: string
-  description: string
-}) {
-  return (
-    <article className="feature-card">
-      <div className="feature-card-top">
-        <div className="feature-icon">{icon}</div>
-        <span>{number}</span>
-      </div>
-      <h3>{title}</h3>
-      <p>{description}</p>
-    </article>
-  )
-}
 
 function StepProgress({ currentStep }: { currentStep: 1 | 2 | 3 }) {
   const steps = [
@@ -536,19 +543,8 @@ function SimulatorPage({
       <Header onLogoClick={onBack} />
 
       <main className="simulator-main">
-        <button className="back-button" onClick={onBack}>
-          <ChevronLeft size={18} />
-          홈으로 돌아가기
-        </button>
-
         <section className="simulator-heading">
-          <span className="section-label">FINANCIAL RISK SIMULATOR</span>
           <h1>어떤 상황을<br /><span>체험해볼까요?</span></h1>
-          <p>
-            상황을 읽고 내가 어떻게 대응할지 작성해보세요.
-            <br />
-            답변을 분석해 금융 위험 대응 수준을 알려드릴게요.
-          </p>
         </section>
 
         <section className="scenario-grid">
@@ -572,7 +568,6 @@ function SimulatorPage({
                 </div>
 
                 <div className="scenario-card-content">
-                  <span className="scenario-category">SCENARIO</span>
                   <h2>{scenario.title}</h2>
                   <h3>{scenario.subtitle}</h3>
                   <p>{scenario.description}</p>
@@ -601,10 +596,12 @@ function SimulatorPage({
 function ScenarioPage({
   scenario,
   onBack,
+  onHome,
   onAnalysisComplete,
 }: {
   scenario: Scenario
   onBack: () => void
+  onHome: () => void
   onAnalysisComplete: (result: AnalysisResult) => void
 }) {
   const [isLoading, setIsLoading] = useState(false)
@@ -624,8 +621,8 @@ function ScenarioPage({
   setErrorMessage('')
 
   try {
-    const response = await fetch(
-      'http://localhost:8000/api/simulators/analyze',
+    const response = await apiFetch(
+      '/api/simulators/analyze',
       {
         method: 'POST',
         headers: {
@@ -655,7 +652,7 @@ function ScenarioPage({
 }
   return (
     <div className="app-shell">
-      <Header onLogoClick={onBack} />
+      <Header onLogoClick={onHome} />
 
       <main className="scenario-main">
         <button className="back-button" onClick={onBack}>
@@ -711,7 +708,6 @@ function ScenarioPage({
 
           <article className="answer-card">
             <div className="answer-card-header">
-              <span className="card-label">YOUR RESPONSE</span>
               <h2>어떻게 대응하시겠습니까?</h2>
               <p>
                 정답을 찾기보다, 현재 상황에서 본인이 할 행동을
@@ -907,28 +903,24 @@ function ResultPage({
   )
 }
 
-type ConversationEntry = {
-  stage: number
-  stageTitle: string
-  speaker: string
-  message: string
-  isUser?: boolean
-}
-
 function MultiStagePage({
   scenario,
   initialData,
   onComplete,
   onBack,
+  onHome,
 }: {
   scenario: Scenario
   initialData: MultiStageStartResponse
   onComplete: (result: MultiStageResult) => void
   onBack: () => void
+  onHome: () => void
 }) {
   const [stageData, setStageData] = useState(initialData)
   const [answer, setAnswer] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const pendingRequest = useRef<{ answer: string; stage: number; id: string } | null>(null)
+  const submitting = useRef(false)
   const [errorMessage, setErrorMessage] = useState('')
 
   const [conversationHistory, setConversationHistory] = useState<
@@ -943,11 +935,13 @@ function MultiStagePage({
   )
 
   const handleSubmit = async () => {
-    if (!answer.trim()) {
-      setErrorMessage('현재 상황에 대한 대응을 작성해주세요.')
+    if (submitting.current) return
+    if (answer.trim().length < 2) {
+      setErrorMessage('현재 상황에 대한 대응을 2자 이상 작성해주세요.')
       return
     }
 
+    submitting.current = true
     setIsLoading(true)
     setErrorMessage('')
 
@@ -955,21 +949,13 @@ function MultiStagePage({
     const currentStageTitle = stageData.stage_title
     const submittedAnswer = answer.trim()
 
-    setConversationHistory((previous) => [
-      ...previous,
-      {
-        stage: currentStage,
-        stageTitle: currentStageTitle,
-        speaker: '나',
-        message: submittedAnswer,
-        isUser: true,
-      },
-    ])
-
+    if (!pendingRequest.current || pendingRequest.current.answer !== submittedAnswer || pendingRequest.current.stage !== currentStage) {
+      pendingRequest.current = { answer: submittedAnswer, stage: currentStage, id: crypto.randomUUID() }
+    }
 
     try {
-      const response = await fetch(
-        'http://localhost:8000/api/multi-stage/respond',
+      const response = await apiFetch(
+        '/api/multi-stage/respond',
         {
           method: 'POST',
           headers: {
@@ -978,6 +964,8 @@ function MultiStagePage({
           body: JSON.stringify({
             session_id: stageData.session_id,
             answer: submittedAnswer,
+            request_id: pendingRequest.current.id,
+            expected_stage: currentStage,
           }),
         },
       )
@@ -988,9 +976,14 @@ function MultiStagePage({
 
       const data: MultiStageResponse = await response.json()
 
+      if (data.status === 'analysis_unavailable') {
+        setErrorMessage(data.messages?.[0]?.message ?? '잠시 후 다시 제출해 주세요.')
+        return
+      }
+
       if (data.is_finished) {
-        const resultResponse = await fetch(
-          `http://localhost:8000/api/multi-stage/sessions/${stageData.session_id}/result`,
+        const resultResponse = await apiFetch(
+          `/api/multi-stage/sessions/${stageData.session_id}/result`,
         )
 
         if (!resultResponse.ok) {
@@ -1010,6 +1003,7 @@ function MultiStagePage({
 
       setConversationHistory((previous) => [
         ...previous,
+        { stage: currentStage, stageTitle: currentStageTitle, speaker: '나', message: submittedAnswer, isUser: true },
         ...nextMessages.map((item) => ({
           stage: nextStage,
           stageTitle: nextStageTitle,
@@ -1023,10 +1017,12 @@ function MultiStagePage({
         stage: data.stage,
         stage_title: data.stage_title,
         description: data.description ?? '',
+        question: data.question,
         messages: data.messages ?? [],
         is_finished: false,
       })
 
+      pendingRequest.current = null
       setAnswer('')
     } catch (error) {
       console.error(error)
@@ -1034,13 +1030,14 @@ function MultiStagePage({
         '서버와 연결할 수 없습니다. 백엔드 서버를 확인해주세요.',
       )
     } finally {
+      submitting.current = false
       setIsLoading(false)
     }
   }
 
   return (
-    <div className="app-shell">
-      <Header onLogoClick={onBack} />
+    <div className="app-shell simulation-shell">
+      <Header onLogoClick={onHome} />
 
       <main className="multi-stage-main">
         <button className="back-button" onClick={onBack}>
@@ -1051,73 +1048,26 @@ function MultiStagePage({
         <StepProgress currentStep={2} />
 
         <section className="multi-stage-heading">
-          <span className="section-label">
-            STAGE {stageData.stage} / {stageData.total_stages}
-          </span>
-
           <h1>
             {scenario.title}
             <br />
             <span>{stageData.stage_title}</span>
           </h1>
 
-          <p>{stageData.description}</p>
         </section>
 
         <section className="conversation-card">
           <div className="conversation-header">
-            <span className="card-label">CONVERSATION</span>
             <span className="stage-badge">
               {stageData.stage}단계
             </span>
           </div>
 
-          <div className="conversation-history">
-            {conversationHistory.map((entry, index) => {
-              const showStageDivider =
-                index === 0 ||
-                conversationHistory[index - 1].stage !== entry.stage
-
-              return (
-                <div key={`${entry.stage}-${entry.speaker}-${index}`}>
-                  {showStageDivider && (
-                    <div className="conversation-stage-divider">
-                      <span>
-                        {entry.stage}단계 · {entry.stageTitle}
-                      </span>
-                    </div>
-                  )}
-
-                  <div
-                    className={`message-row ${
-                      entry.isUser ? 'user-message-row' : ''
-                    }`}
-                  >
-                    <span
-                      className={`speaker-label ${
-                        entry.isUser ? 'user-speaker-label' : ''
-                      }`}
-                    >
-                      {entry.speaker}
-                    </span>
-
-                    <div
-                      className={`message-bubble ${
-                        entry.isUser ? 'user-message-bubble' : ''
-                      }`}
-                    >
-                      {entry.message}
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
+          <ConversationHistory entries={conversationHistory} followLatest />
         </section>
 
         <section className="multi-answer-card">
-          <span className="card-label">YOUR RESPONSE</span>
-          <h2>어떻게 대응하시겠습니까?</h2>
+          <h2>{stageData.question}</h2>
           <p>
             현재 상황에서 본인이 할 행동을 자유롭게 작성해주세요.
           </p>
@@ -1139,9 +1089,7 @@ function MultiStagePage({
             >
               {isLoading
                 ? '다음 상황을 준비하는 중...'
-                : stageData.stage === stageData.total_stages
-                  ? '시뮬레이션 종료'
-                  : '다음 상황으로'}
+                : '답변 제출'}
               {!isLoading && <ArrowRight size={18} />}
             </button>
           </div>
@@ -1159,22 +1107,25 @@ function MultiStageResultPage({
   scenario,
   result,
   onHome,
+  onLearn,
 }: {
   scenario: Scenario
   result: MultiStageResult
   onHome: () => void
+  onLearn: (contentId: string) => void
 }) {
+  const auth = useAuth()
   const resultClass =
     result.risk_level === 'low'
       ? 'result-low'
-      : result.risk_level === 'medium'
+      : result.risk_level === 'medium' || result.risk_level === 'unknown'
         ? 'result-medium'
         : 'result-high'
 
   const resultIcon =
     result.risk_level === 'low'
       ? '✓'
-      : result.risk_level === 'medium'
+      : result.risk_level === 'medium' || result.risk_level === 'unknown'
         ? '!'
         : '×'
 
@@ -1200,15 +1151,12 @@ function MultiStageResultPage({
           <div className="result-summary-content">
             <span>금융 위험 대응 수준</span>
             <h2>{result.risk_label}</h2>
-            <p>4단계 상황에서의 대응을 종합해 분석했습니다.</p>
+            <p>{result.summary}</p>
           </div>
 
           <div className="result-score">
-            <span>TOTAL SCORE</span>
-            <strong>
-              {result.score > 0 ? '+' : ''}
-              {result.score}
-            </strong>
+            <span>응답 완료 단계</span>
+            <strong>{result.completed_stage_count} / {result.total_stages}</strong>
           </div>
         </section>
 
@@ -1277,6 +1225,36 @@ function MultiStageResultPage({
           </ul>
         </section>
 
+        <section className="related-learning-card">
+          <div className="recommendation-heading">
+            <BookOpen size={22} />
+            <div>
+              <span className="section-label">RELATED LEARNING</span>
+              <h2>이 상황과 관련된 지식</h2>
+            </div>
+          </div>
+
+          <p>
+            이번 시뮬레이션에서 배운 내용을 더 자세히 알아보세요.
+          </p>
+
+          <div className="related-learning-list">
+            {scenario.relatedLearningIds.map((contentId) => (
+              <button
+                className="related-learning-item"
+                key={contentId}
+                onClick={() => onLearn(contentId)}
+              >
+                <span>관련 지식 학습하기</span>
+                <ArrowRight size={17} />
+              </button>
+            ))}
+          </div>
+        </section>
+
+
+        <SaveResultButton key={`${result.session_id}-${auth.user?.id ?? "guest"}`} sessionId={result.session_id} />
+
         <div className="result-actions">
           <button className="primary-button" onClick={onHome}>
             처음으로 돌아가기
@@ -1286,6 +1264,238 @@ function MultiStageResultPage({
       </main>
     </div>
   )
+}
+
+function LearningPage({
+  onBack,
+  initialContentId,
+}: {
+  onBack: () => void
+  initialContentId?: string
+}) {
+  const [contents, setContents] = useState<LearningContent[]>([])
+  const [selectedContent, setSelectedContent] = useState<LearningContent | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [errorMessage, setErrorMessage] = useState('')
+
+  useEffect(() => {
+    apiFetch('/api/learning')
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error('학습 콘텐츠를 불러오지 못했습니다.')
+        }
+
+        return response.json()
+      })
+      .then((data: LearningContent[]) => {
+        setContents(data)
+
+        if (initialContentId) {
+          const matchedContent = data.find(
+            (content) => content.id === initialContentId,
+          )
+          if (matchedContent) {
+            setSelectedContent(matchedContent)
+          }
+        }
+      })
+      .catch((error) => {
+        console.error(error)
+        setErrorMessage(
+          '학습 콘텐츠를 불러올 수 없습니다. 백엔드 서버를 확인해주세요.',
+        )
+      })
+      .finally(() => {
+        setIsLoading(false)
+      })
+  }, [initialContentId])
+
+  const basicContents = contents.filter(
+    (content) => content.category === '금융 기초',
+  )
+
+  const fraudContents = contents.filter(
+    (content) => content.category === '금융 사기 예방',
+  )
+
+  return (
+    <div className="app-shell">
+      <Header onLogoClick={onBack} />
+
+      <main className="learning-main">
+        <button className="back-button" onClick={onBack}>
+          <ChevronLeft size={18} />
+          홈으로 돌아가기
+        </button>
+
+        <section className="learning-heading">
+          <h1>
+            경제를 이해하는
+            <br />
+            <span>첫걸음</span>
+          </h1>
+          {!selectedContent && (
+          <p>
+            어려운 경제·금융 지식을 짧고 쉽게 학습해보세요.
+            <br />
+            시뮬레이션에서 만나는 위험 신호도 함께 알아볼 수 있어요.
+          </p>
+          )}
+        </section>
+
+        {isLoading && (
+          <div className="learning-state">
+            학습 콘텐츠를 불러오는 중...
+          </div>
+        )}
+
+        {errorMessage && (
+          <div className="learning-state learning-error">
+            {errorMessage}
+          </div>
+        )}
+
+        {!isLoading && !errorMessage && selectedContent && (
+          <LearningDetail
+            key={selectedContent.id}
+            content={selectedContent}
+            onBack={() => setSelectedContent(null)}
+          />
+        )}
+
+        {!isLoading && !errorMessage && !selectedContent && (
+          <>
+            <LearningCategory
+              title="금융 기초"
+              description="일상생활에 필요한 경제 개념을 배워보세요."
+              contents={basicContents}
+              onSelect={setSelectedContent}
+            />
+
+            <LearningCategory
+              title="금융 사기 예방"
+              description="시뮬레이션에 등장하는 위험 신호를 알아보세요."
+              contents={fraudContents}
+              onSelect={setSelectedContent}
+            />
+          </>
+        )}
+      </main>
+    </div>
+  )
+}
+
+function LearningCategory({
+  title,
+  description,
+  contents,
+  onSelect,
+}: {
+  title: string
+  description: string
+  contents: LearningContent[]
+  onSelect: (content: LearningContent) => void
+}) {
+  return (
+    <section className="learning-category">
+      <div className="learning-category-heading">
+        <div>
+          <h2>{title}</h2>
+        </div>
+        <p>{description}</p>
+      </div>
+
+      <div className="learning-card-grid">
+        {contents.map((content) => (
+          <button className="learning-card" key={content.id} onClick={() => onSelect(content)}>
+            <div className="learning-card-icon">
+              <BookOpen size={22} />
+            </div>
+
+            <span className="learning-card-category">
+              {content.category}
+            </span>
+
+            <h3>{content.title}</h3>
+            <p>{content.summary}</p>
+
+            <div className="learning-card-footer">
+              <span>핵심 지식 {content.key_points.length}개</span>
+              <ArrowRight size={17} />
+            </div>
+          </button>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function LearningDetail({
+  content,
+  onBack,
+}: {
+  content: LearningContent
+  onBack: () => void
+}) {
+  return (
+    <section className="learning-detail">
+      <button className="back-button" onClick={onBack}>
+        <ChevronLeft size={18} />
+        학습 목록으로 돌아가기
+      </button>
+
+      <div className="learning-detail-header">
+        <div className="learning-card-icon">
+          <BookOpen size={25} />
+        </div>
+
+        <span className="section-label">{content.category}</span>
+        <h1>{content.title}</h1>
+        <p>{content.summary}</p>
+      </div>
+
+      <article className="learning-info-card">
+        <h2>쉽게 이해하기</h2>
+        <p className="learning-main-explanation">
+          {content.easy_explanation}
+        </p>
+
+        <div className="learning-impact-box">
+          <h3>대학생에게 어떤 영향을 줄까요?</h3>
+          <ul>
+            {content.impact_for_students.map((impact) => (
+              <li key={impact}>{impact}</li>
+            ))}
+          </ul>
+        </div>
+
+        <h3 className="key-point-title">핵심 포인트</h3>
+        <ul className="key-point-list">
+          {content.key_points.map((point) => (
+            <li key={point}>
+              <span>✓</span>
+              {point}
+            </li>
+          ))}
+        </ul>
+      </article>
+
+      <QuizCard key={content.id} quizzes={content.quizzes} />
+    </section>
+  )
+}
+
+// Account changes clear private in-memory screens; guest -> login keeps an unsaved report.
+function App() {
+  const { user } = useAuth()
+  const current = user?.id ?? null
+  const [identity, setIdentity] = useState<string | null>(current)
+  const [scope, setScope] = useState(0)
+  if (identity !== current) {
+    if (identity !== null) setScope(scope + 1)
+    setIdentity(current)
+  }
+  return <AppContent key={scope} />
 }
 
 export default App

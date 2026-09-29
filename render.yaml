@@ -1,0 +1,31 @@
+# Free trial configuration; see docs/render-deployment.md before deploying.
+services:
+  - type: web
+    name: finstep
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: FRONTEND_ORIGINS
+        value: ""
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: finstep-db
+          property: connectionString
+databases:
+  - name: finstep-db
+    plan: free
+    region: singapore
+    databaseName: finstep
+    user: finstep
+    ipAllowList: []

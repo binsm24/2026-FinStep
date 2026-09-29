@@ -1,0 +1,14 @@
+.git
+**/.venv
+**/node_modules
+**/__pycache__
+**/.env
+**/.env.*
+**/storage
+**/*.db
+**/*.db-shm
+**/*.db-wal
+frontend/dist
+docs
+backend/test_*.py
+frontend/tests

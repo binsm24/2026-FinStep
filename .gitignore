@@ -7,6 +7,10 @@ backend/.venv/
 backend/__pycache__/
 backend/**/__pycache__/
 *.pyc
+backend/storage/
+*.db
+*.db-shm
+*.db-wal
 
 # Environment
 .env
@@ -16,3 +20,4 @@ backend/**/__pycache__/
 # Editor
 .vscode/
 .idea/
+.vercel/
