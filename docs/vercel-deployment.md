@@ -3,6 +3,7 @@
 ## 구성
 
 - 저장소 루트를 Vercel 프로젝트 Root Directory로 사용한다. Framework Preset은 Other이다.
+- Vercel Python 런타임은 루트 `.python-version`에서 지원 버전인 `3.12`로 지정한다.
 - `vercel.json`에서 frontend의 설치·빌드 및 `frontend/dist` 출력을 설정한다.
 - `/api/*`와 `/health`는 `api/index.py`의 FastAPI 함수로 연결한다. 정적 파일과 SPA 페이지는 Vercel CDN에서 제공한다.
 - 시뮬레이션 상태, 로그인 세션, 결과를 모두 Neon PostgreSQL에 저장한다. 요청 간 메모리 유지에 의존하지 않는다.
