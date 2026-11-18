@@ -1,5 +1,6 @@
 from typing import Any
 import re
+from services.scoring import clamp_score
 
 NEGATION_PATTERNS = [
     r"하지\s*않",
@@ -209,7 +210,7 @@ def analyze_answer(scenario_id: str, answer: str) -> dict[str, Any]:
         )
 
     return {
-        "score": score,
+        "score": clamp_score(score),
         "risk_level": risk_level,
         "risk_label": risk_label,
         "detected_actions": detected_actions,
